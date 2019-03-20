@@ -34,6 +34,7 @@ import org.apache.servicecomb.saga.core.RecoveryPolicy;
 import org.apache.servicecomb.saga.core.application.SagaExecutionComponent;
 import org.apache.shardingsphere.core.constant.DatabaseType;
 import org.apache.shardingsphere.core.exception.ShardingException;
+import org.apache.shardingsphere.core.route.SQLUnit;
 import org.apache.shardingsphere.transaction.core.ResourceDataSource;
 import org.apache.shardingsphere.transaction.core.TransactionType;
 import org.apache.shardingsphere.transaction.spi.ShardingTransactionManager;
@@ -53,10 +54,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class SagaShardingTransactionManager implements ShardingTransactionManager {
     
-    public static final String CURRENT_TRANSACTION_KEY = "current_transaction";
-//
-//    private static final ThreadLocal<SagaTransaction> CURRENT_TRANSACTION = new ThreadLocal<>();
-//
     private final SagaConfiguration sagaConfiguration;
     
     @Getter
@@ -72,15 +69,6 @@ public final class SagaShardingTransactionManager implements ShardingTransaction
         sagaPersistence = SagaPersistenceLoader.load(sagaConfiguration.getSagaPersistenceConfiguration());
         sagaExecutionComponent = SagaExecutionComponentFactory.createSagaExecutionComponent(sagaConfiguration, sagaPersistence);
     }
-    
-//    /**
-//     * Get saga transaction for current thread.
-//     *
-//     * @return saga transaction
-//     */
-//    public static SagaTransaction getCurrentTransaction() {
-//        return CURRENT_TRANSACTION.get();
-//    }
     
     @Override
     public void init(final DatabaseType databaseType, final Collection<ResourceDataSource> resourceDataSources) {
@@ -172,12 +160,19 @@ public final class SagaShardingTransactionManager implements ShardingTransaction
     private void cleanTransaction() {
         String globalTxId = SagaTransactionContextHolder.getGlobalTxId();
         if (null != globalTxId) {
+            cleanTransactionalSQLUnit(globalTxId);
             sagaPersistence.cleanSnapshot(globalTxId);
             SagaTransactionManager.release(globalTxId);
         }
         ShardingTransportFactory.getInstance().remove();
-//        ShardingExecuteDataMap.getDataMap().remove(CURRENT_TRANSACTION_KEY);
         SagaTransactionContextHolder.clear();
+    }
+    
+    private void cleanTransactionalSQLUnit(final String globalTxId) {
+        SagaTransaction sagaTransaction = SagaTransactionManager.getCurrentSagaTransaction(globalTxId);
+        for (SQLUnit each : sagaTransaction.getTableUnitMap().keySet()) {
+            TransactionalSQLUnitManager.removeSQLUnit(each);
+        }
     }
     
     @Override

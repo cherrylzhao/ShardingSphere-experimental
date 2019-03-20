@@ -48,6 +48,10 @@ public class SagaTransactionManager {
         return TRANSACTION_MAP.get(SagaTransactionContextHolder.getGlobalTxId());
     }
     
+    public static SagaTransaction getCurrentSagaTransaction(final String globalTxId) {
+        return TRANSACTION_MAP.get(globalTxId);
+    }
+    
     public static void release(final String globalTxId) {
         RESOURCE_MAP.remove(globalTxId);
         TRANSACTION_MAP.remove(globalTxId);

@@ -18,10 +18,12 @@
 package io.shardingsphere.transaction.saga.hook;
 
 import com.google.common.collect.Lists;
-import io.shardingsphere.transaction.saga.context.SagaBranchTransaction;
-import io.shardingsphere.transaction.saga.SagaShardingTransactionManager;
-import io.shardingsphere.transaction.saga.context.SagaTransaction;
+import io.shardingsphere.transaction.saga.SagaTransactionManager;
+import io.shardingsphere.transaction.saga.TransactionalSQLUnit;
+import io.shardingsphere.transaction.saga.TransactionalSQLUnitManager;
 import io.shardingsphere.transaction.saga.constant.ExecuteStatus;
+import io.shardingsphere.transaction.saga.context.SagaBranchTransaction;
+import io.shardingsphere.transaction.saga.context.SagaTransaction;
 import io.shardingsphere.transaction.saga.persistence.SagaSnapshot;
 import io.shardingsphere.transaction.saga.resource.SagaResourceManager;
 import io.shardingsphere.transaction.saga.resource.SagaTransactionResource;
@@ -55,8 +57,9 @@ public final class SagaSQLExecutionHook implements SQLExecutionHook {
     
     @Override
     public void start(final RouteUnit routeUnit, final DataSourceMetaData dataSourceMetaData, final boolean isTrunkThread, final Map<String, Object> shardingExecuteDataMap) {
-        if (shardingExecuteDataMap.containsKey(SagaShardingTransactionManager.CURRENT_TRANSACTION_KEY)) {
-            sagaTransaction = (SagaTransaction) shardingExecuteDataMap.get(SagaShardingTransactionManager.CURRENT_TRANSACTION_KEY);
+        TransactionalSQLUnit transactionalSQLUnit = TransactionalSQLUnitManager.getTransactionalSQLUnit(routeUnit.getSqlUnit());
+        sagaTransaction = SagaTransactionManager.getCurrentSagaTransaction(transactionalSQLUnit.getGlobalTxId());
+        if (null != sagaTransaction) {
             if (sagaTransaction.isDMLBranchTransactionGroup()) {
                 sagaBranchTransaction = new SagaBranchTransaction(routeUnit.getDataSourceName(), routeUnit.getSqlUnit().getSql(), splitParameters(routeUnit.getSqlUnit()));
                 sagaBranchTransaction.setActualTableName(getAcutalTableName(routeUnit.getSqlUnit()));

@@ -17,8 +17,8 @@
 
 package io.shardingsphere.transaction.saga.hook;
 
-import io.shardingsphere.transaction.saga.SagaShardingTransactionManager;
 import io.shardingsphere.transaction.saga.SagaTransactionManager;
+import io.shardingsphere.transaction.saga.TransactionalSQLUnitManager;
 import io.shardingsphere.transaction.saga.context.SagaTransaction;
 import org.apache.shardingsphere.core.rewrite.hook.RewriteHook;
 import org.apache.shardingsphere.core.route.SQLUnit;
@@ -43,6 +43,7 @@ public final class SagaSQLRewriteHook implements RewriteHook {
     @Override
     public void finishSuccess(final SQLUnit sqlUnit) {
         if (null != sagaTransaction) {
+            TransactionalSQLUnitManager.register(sqlUnit);
             sagaTransaction.getTableUnitMap().put(sqlUnit, tableUnit);
         }
     }
