@@ -28,6 +28,8 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
+import java.util.UUID;
+
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -51,7 +53,7 @@ public final class SagaTransactionTest {
     
     @Before
     public void setUp() {
-        sagaTransaction = new SagaTransaction(RecoveryPolicy.SAGA_FORWARD_RECOVERY_POLICY);
+        sagaTransaction = new SagaTransaction(UUID.randomUUID().toString(), RecoveryPolicy.SAGA_FORWARD_RECOVERY_POLICY);
         when(sqlStatement.getType()).thenReturn(SQLType.DML);
     }
     
