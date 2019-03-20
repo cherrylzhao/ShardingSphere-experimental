@@ -22,6 +22,7 @@ import io.shardingsphere.transaction.saga.persistence.SagaPersistence;
 import io.shardingsphere.transaction.saga.resource.SagaTransactionResource;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Saga transaction manager.
@@ -30,10 +31,9 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SagaTransactionManager {
     
-    private static final ConcurrentHashMap<String, SagaTransaction> TRANSACTION_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<String, SagaTransaction> TRANSACTION_MAP = new ConcurrentHashMap<>();
     
-    private static final ConcurrentHashMap<String, SagaTransactionResource> RESOURCE_MAP = new ConcurrentHashMap<>();
-    
+    private static final ConcurrentMap<String, SagaTransactionResource> RESOURCE_MAP = new ConcurrentHashMap<>();
     
     public static void register(final String globalTxId, final String recoveryPolicy, final SagaPersistence sagaPersistence) {
         TRANSACTION_MAP.putIfAbsent(globalTxId, new SagaTransaction(recoveryPolicy));
