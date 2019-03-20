@@ -41,7 +41,7 @@ public class SagaTransactionManager {
     }
     
     public static SagaTransactionResource getCurrentTransactionResource() {
-        return RESOURCE_MAP.get(SagaTransactionContextHolder.getGlobalTxId());
+        return null != SagaTransactionContextHolder.getGlobalTxId() ? RESOURCE_MAP.get(SagaTransactionContextHolder.getGlobalTxId()) : null;
     }
     
     public static SagaTransactionResource getCurrentTransactionResource(final String globalTxId) {
@@ -49,7 +49,7 @@ public class SagaTransactionManager {
     }
     
     public static SagaTransaction getCurrentSagaTransaction() {
-        return TRANSACTION_MAP.get(SagaTransactionContextHolder.getGlobalTxId());
+        return null != SagaTransactionContextHolder.getGlobalTxId() ? TRANSACTION_MAP.get(SagaTransactionContextHolder.getGlobalTxId()) : null;
     }
     
     public static SagaTransaction getCurrentSagaTransaction(final String globalTxId) {

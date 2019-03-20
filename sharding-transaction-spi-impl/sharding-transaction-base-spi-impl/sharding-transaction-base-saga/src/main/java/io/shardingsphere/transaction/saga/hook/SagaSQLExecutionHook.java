@@ -58,6 +58,9 @@ public final class SagaSQLExecutionHook implements SQLExecutionHook {
     @Override
     public void start(final RouteUnit routeUnit, final DataSourceMetaData dataSourceMetaData, final boolean isTrunkThread, final Map<String, Object> shardingExecuteDataMap) {
         TransactionalSQLUnit transactionalSQLUnit = TransactionalSQLUnitManager.getTransactionalSQLUnit(routeUnit.getSqlUnit());
+        if (null == transactionalSQLUnit) {
+            return;
+        }
         sagaTransaction = SagaTransactionManager.getCurrentSagaTransaction(transactionalSQLUnit.getGlobalTxId());
         if (null != sagaTransaction) {
             if (sagaTransaction.isDMLBranchTransactionGroup()) {
