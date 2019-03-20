@@ -17,11 +17,10 @@
 
 package io.shardingsphere.transaction.saga;
 
-import io.shardingsphere.transaction.saga.config.SagaConfiguration;
 import io.shardingsphere.transaction.saga.context.SagaTransaction;
-import lombok.RequiredArgsConstructor;
+import io.shardingsphere.transaction.saga.persistence.SagaPersistence;
+import io.shardingsphere.transaction.saga.resource.SagaTransactionResource;
 
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -29,32 +28,29 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @author zhaojun
  */
-@RequiredArgsConstructor
 public class SagaTransactionManager {
     
-    private final SagaConfiguration sagaConfiguration;
+    private static final ConcurrentHashMap<String, SagaTransaction> TRANSACTION_MAP = new ConcurrentHashMap<>();
     
-    private final Map<String, SagaTransaction> sagaTransactionMap = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, SagaTransactionResource> RESOURCE_MAP = new ConcurrentHashMap<>();
     
-    private final ThreadLocal<SagaTransaction> currentTransaction = new ThreadLocal<>();
     
-    /**
-     * Saga transaction manager begin.
-     */
-    public void begin() {
-        if (null == currentTransaction.get()) {
-            SagaTransaction sagaTransaction = new SagaTransaction(sagaConfiguration.getRecoveryPolicy());
-            sagaTransactionMap.put(sagaTransaction.getId(), sagaTransaction);
-            currentTransaction.set(sagaTransaction);
-        }
+    public static void register(final String globalTxId, final String recoveryPolicy, final SagaPersistence sagaPersistence) {
+        TRANSACTION_MAP.putIfAbsent(globalTxId, new SagaTransaction(recoveryPolicy));
+        RESOURCE_MAP.put(globalTxId, new SagaTransactionResource(sagaPersistence));
     }
     
-    /**
-     * Get current transaction.
-     *
-     * @return saga transaction
-     */
-    public SagaTransaction getCurrentTransaction() {
-        return currentTransaction.get();
+    public static SagaTransactionResource getCurrentTransactionResource() {
+        return RESOURCE_MAP.get(SagaTransactionContextHolder.getGlobalTxId());
     }
+    
+    public static SagaTransaction getCurrentSagaTransaction() {
+        return TRANSACTION_MAP.get(SagaTransactionContextHolder.getGlobalTxId());
+    }
+    
+    public static void release(final String globalTxId) {
+        RESOURCE_MAP.remove(globalTxId);
+        TRANSACTION_MAP.remove(globalTxId);
+    }
+    
 }

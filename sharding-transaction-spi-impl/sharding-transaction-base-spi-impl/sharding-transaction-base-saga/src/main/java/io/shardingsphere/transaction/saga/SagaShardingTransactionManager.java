@@ -22,22 +22,29 @@ import io.shardingsphere.transaction.saga.config.SagaConfigurationLoader;
 import io.shardingsphere.transaction.saga.context.SagaBranchTransaction;
 import io.shardingsphere.transaction.saga.context.SagaBranchTransactionGroup;
 import io.shardingsphere.transaction.saga.context.SagaTransaction;
-import io.shardingsphere.transaction.saga.resource.SagaResourceManager;
+import io.shardingsphere.transaction.saga.persistence.SagaPersistence;
+import io.shardingsphere.transaction.saga.persistence.SagaPersistenceLoader;
 import io.shardingsphere.transaction.saga.revert.SQLRevertResult;
+import io.shardingsphere.transaction.saga.servicecomb.SagaExecutionComponentFactory;
 import io.shardingsphere.transaction.saga.servicecomb.definition.SagaDefinitionBuilder;
 import io.shardingsphere.transaction.saga.servicecomb.transport.ShardingTransportFactory;
+import lombok.Getter;
 import lombok.SneakyThrows;
-
 import org.apache.servicecomb.saga.core.RecoveryPolicy;
+import org.apache.servicecomb.saga.core.application.SagaExecutionComponent;
 import org.apache.shardingsphere.core.constant.DatabaseType;
-import org.apache.shardingsphere.core.execute.ShardingExecuteDataMap;
+import org.apache.shardingsphere.core.exception.ShardingException;
 import org.apache.shardingsphere.transaction.core.ResourceDataSource;
 import org.apache.shardingsphere.transaction.core.TransactionType;
 import org.apache.shardingsphere.transaction.spi.ShardingTransactionManager;
 
+import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Collection;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Sharding transaction manager for Saga.
@@ -47,31 +54,41 @@ import java.util.Collection;
 public final class SagaShardingTransactionManager implements ShardingTransactionManager {
     
     public static final String CURRENT_TRANSACTION_KEY = "current_transaction";
-    
-    private static final ThreadLocal<SagaTransaction> CURRENT_TRANSACTION = new ThreadLocal<>();
-    
+//
+//    private static final ThreadLocal<SagaTransaction> CURRENT_TRANSACTION = new ThreadLocal<>();
+//
     private final SagaConfiguration sagaConfiguration;
     
-    private final SagaResourceManager resourceManager;
+    @Getter
+    private final SagaPersistence sagaPersistence;
+    
+    @Getter
+    private final SagaExecutionComponent sagaExecutionComponent;
+    
+    private final Map<String, DataSource> dataSourceMap = new ConcurrentHashMap<>();
     
     public SagaShardingTransactionManager() {
         sagaConfiguration = SagaConfigurationLoader.load();
-        resourceManager = new SagaResourceManager(sagaConfiguration);
+        sagaPersistence = SagaPersistenceLoader.load(sagaConfiguration.getSagaPersistenceConfiguration());
+        sagaExecutionComponent = SagaExecutionComponentFactory.createSagaExecutionComponent(sagaConfiguration, sagaPersistence);
     }
     
-    /**
-     * Get saga transaction for current thread.
-     *
-     * @return saga transaction
-     */
-    public static SagaTransaction getCurrentTransaction() {
-        return CURRENT_TRANSACTION.get();
-    }
+//    /**
+//     * Get saga transaction for current thread.
+//     *
+//     * @return saga transaction
+//     */
+//    public static SagaTransaction getCurrentTransaction() {
+//        return CURRENT_TRANSACTION.get();
+//    }
     
     @Override
     public void init(final DatabaseType databaseType, final Collection<ResourceDataSource> resourceDataSources) {
         for (ResourceDataSource each : resourceDataSources) {
-            resourceManager.registerDataSourceMap(each.getOriginalName(), each.getDataSource());
+            if (dataSourceMap.containsKey(each.getOriginalName())) {
+                throw new ShardingException("datasource {} has registered", each.getOriginalName());
+            }
+            dataSourceMap.put(each.getOriginalName(), each.getDataSource());
         }
     }
     
@@ -82,28 +99,30 @@ public final class SagaShardingTransactionManager implements ShardingTransaction
     
     @Override
     public boolean isInTransaction() {
-        return null != CURRENT_TRANSACTION.get();
+        return null != SagaTransactionContextHolder.getGlobalTxId();
     }
     
     @Override
     public Connection getConnection(final String dataSourceName) throws SQLException {
-        return resourceManager.getConnection(dataSourceName, CURRENT_TRANSACTION.get());
+        Connection result = dataSourceMap.get(dataSourceName).getConnection();
+        SagaTransactionManager.getCurrentTransactionResource().getConnections().putIfAbsent(dataSourceName, result);
+        return result;
     }
     
     @Override
     public void begin() {
-        if (null == CURRENT_TRANSACTION.get()) {
-            SagaTransaction transaction = new SagaTransaction(sagaConfiguration.getRecoveryPolicy());
-            resourceManager.registerTransactionResource(transaction);
-            ShardingExecuteDataMap.getDataMap().put(CURRENT_TRANSACTION_KEY, transaction);
-            CURRENT_TRANSACTION.set(transaction);
-            ShardingTransportFactory.getInstance().cacheTransport(transaction);
+        if (null == SagaTransactionContextHolder.getGlobalTxId()) {
+            String globalTxId = UUID.randomUUID().toString();
+            SagaTransactionContextHolder.setGlobalTxId(globalTxId);
+            SagaTransactionManager.register(globalTxId, sagaConfiguration.getRecoveryPolicy(), sagaPersistence);
+            ShardingTransportFactory.getInstance().cacheTransport(SagaTransactionManager.getCurrentSagaTransaction());
         }
     }
     
     @Override
     public void commit() {
-        if (null != CURRENT_TRANSACTION.get() && CURRENT_TRANSACTION.get().isContainsException()) {
+        if (null != SagaTransactionContextHolder.getGlobalTxId()
+            && SagaTransactionManager.getCurrentSagaTransaction().isContainsException()) {
             submitToSagaEngine(false);
         }
         cleanTransaction();
@@ -111,14 +130,15 @@ public final class SagaShardingTransactionManager implements ShardingTransaction
     
     @Override
     public void rollback() {
-        if (null != CURRENT_TRANSACTION.get()) {
+        if (null != SagaTransactionContextHolder.getGlobalTxId()) {
             submitToSagaEngine(isForcedRollback());
         }
         cleanTransaction();
     }
     
     private boolean isForcedRollback() {
-        return !CURRENT_TRANSACTION.get().isContainsException() && RecoveryPolicy.SAGA_BACKWARD_RECOVERY_POLICY.equals(sagaConfiguration.getRecoveryPolicy());
+        return !SagaTransactionManager.getCurrentSagaTransaction().isContainsException()
+            && RecoveryPolicy.SAGA_BACKWARD_RECOVERY_POLICY.equals(sagaConfiguration.getRecoveryPolicy());
     }
     
     @SneakyThrows
@@ -127,13 +147,13 @@ public final class SagaShardingTransactionManager implements ShardingTransaction
         if (isForcedRollback) {
             sagaDefinitionBuilder.addRollbackRequest();
         }
-        resourceManager.getSagaExecutionComponent().run(sagaDefinitionBuilder.build());
+        sagaExecutionComponent.run(sagaDefinitionBuilder.build());
     }
     
     private SagaDefinitionBuilder getSagaDefinitionBuilder() {
         SagaDefinitionBuilder result = new SagaDefinitionBuilder(sagaConfiguration.getRecoveryPolicy(),
             sagaConfiguration.getTransactionMaxRetries(), sagaConfiguration.getCompensationMaxRetries(), sagaConfiguration.getTransactionRetryDelayMilliseconds());
-        for (SagaBranchTransactionGroup each : CURRENT_TRANSACTION.get().getBranchTransactionGroups()) {
+        for (SagaBranchTransactionGroup each : SagaTransactionManager.getCurrentSagaTransaction().getBranchTransactionGroups()) {
             result.switchParents();
             initSagaDefinitionForGroup(result, each);
         }
@@ -141,7 +161,7 @@ public final class SagaShardingTransactionManager implements ShardingTransaction
     }
     
     private void initSagaDefinitionForGroup(final SagaDefinitionBuilder sagaDefinitionBuilder, final SagaBranchTransactionGroup sagaBranchTransactionGroup) {
-        SagaTransaction currentTransaction = CURRENT_TRANSACTION.get();
+        SagaTransaction currentTransaction = SagaTransactionManager.getCurrentSagaTransaction();
         for (SagaBranchTransaction each : sagaBranchTransactionGroup.getBranchTransactions()) {
             SQLRevertResult revertResult = currentTransaction.getRevertResults().containsKey(each) ? currentTransaction.getRevertResults().get(each) : new SQLRevertResult();
             sagaDefinitionBuilder.addChildRequest(
@@ -150,17 +170,18 @@ public final class SagaShardingTransactionManager implements ShardingTransaction
     }
     
     private void cleanTransaction() {
-        if (null != CURRENT_TRANSACTION.get()) {
-            resourceManager.getSagaPersistence().cleanSnapshot(CURRENT_TRANSACTION.get().getId());
-            resourceManager.releaseTransactionResource(CURRENT_TRANSACTION.get());
+        String globalTxId = SagaTransactionContextHolder.getGlobalTxId();
+        if (null != globalTxId) {
+            sagaPersistence.cleanSnapshot(globalTxId);
+            SagaTransactionManager.release(globalTxId);
         }
         ShardingTransportFactory.getInstance().remove();
-        ShardingExecuteDataMap.getDataMap().remove(CURRENT_TRANSACTION_KEY);
-        CURRENT_TRANSACTION.remove();
+//        ShardingExecuteDataMap.getDataMap().remove(CURRENT_TRANSACTION_KEY);
+        SagaTransactionContextHolder.clear();
     }
     
     @Override
     public void close() {
-        resourceManager.releaseDataSourceMap();
+        dataSourceMap.clear();
     }
 }

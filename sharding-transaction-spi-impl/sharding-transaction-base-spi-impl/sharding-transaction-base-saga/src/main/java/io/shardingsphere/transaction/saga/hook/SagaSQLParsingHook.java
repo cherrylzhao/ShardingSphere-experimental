@@ -17,7 +17,7 @@
 
 package io.shardingsphere.transaction.saga.hook;
 
-import io.shardingsphere.transaction.saga.SagaShardingTransactionManager;
+import io.shardingsphere.transaction.saga.SagaTransactionManager;
 import io.shardingsphere.transaction.saga.context.SagaTransaction;
 import org.apache.shardingsphere.core.metadata.table.ShardingTableMetaData;
 import org.apache.shardingsphere.core.parse.hook.ParsingHook;
@@ -30,7 +30,7 @@ import org.apache.shardingsphere.core.parse.parser.sql.SQLStatement;
  */
 public final class SagaSQLParsingHook implements ParsingHook {
     
-    private final SagaTransaction sagaTransaction = SagaShardingTransactionManager.getCurrentTransaction();
+    private final SagaTransaction sagaTransaction = SagaTransactionManager.getCurrentSagaTransaction();
     
     private String sql;
     
