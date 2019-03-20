@@ -54,6 +54,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class SagaShardingTransactionManager implements ShardingTransactionManager {
     
+    public static final String CURRENT_TRANSACTION_KEY = "current_transaction";
+    
     private final SagaConfiguration sagaConfiguration;
     
     @Getter
@@ -68,6 +70,10 @@ public final class SagaShardingTransactionManager implements ShardingTransaction
         sagaConfiguration = SagaConfigurationLoader.load();
         sagaPersistence = SagaPersistenceLoader.load(sagaConfiguration.getSagaPersistenceConfiguration());
         sagaExecutionComponent = SagaExecutionComponentFactory.createSagaExecutionComponent(sagaConfiguration, sagaPersistence);
+    }
+    
+    public static SagaTransaction getCurrentTransaction() {
+        return SagaTransactionManager.getCurrentSagaTransaction();
     }
     
     @Override

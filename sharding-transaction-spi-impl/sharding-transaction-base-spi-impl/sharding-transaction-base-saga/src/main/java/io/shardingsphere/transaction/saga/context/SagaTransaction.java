@@ -42,7 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Getter
 public final class SagaTransaction {
     
-    private final String id = UUID.randomUUID().toString();
+    private final String id;
     
     private final String recoveryPolicy;
     

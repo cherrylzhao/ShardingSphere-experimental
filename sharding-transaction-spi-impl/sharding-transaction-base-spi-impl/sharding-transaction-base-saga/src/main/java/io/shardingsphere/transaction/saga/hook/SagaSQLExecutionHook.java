@@ -93,7 +93,7 @@ public final class SagaSQLExecutionHook implements SQLExecutionHook {
     
     private void saveNewSnapshot() {
         if (RecoveryPolicy.SAGA_BACKWARD_RECOVERY_POLICY.equals(sagaTransaction.getRecoveryPolicy())) {
-            SagaTransactionResource transactionResource = SagaResourceManager.getTransactionResource(sagaTransaction);
+            SagaTransactionResource transactionResource = SagaTransactionManager.getCurrentTransactionResource(sagaTransaction.getId());
             SQLRevertResult revertResult = sqlRevert(transactionResource.getRevertEngine());
             sagaTransaction.getRevertResults().put(sagaBranchTransaction, revertResult);
             transactionResource.getPersistence().persistSnapshot(new SagaSnapshot(sagaTransaction.getId(), sagaBranchTransaction.hashCode(), sagaBranchTransaction, revertResult));

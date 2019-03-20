@@ -36,12 +36,16 @@ public class SagaTransactionManager {
     private static final ConcurrentMap<String, SagaTransactionResource> RESOURCE_MAP = new ConcurrentHashMap<>();
     
     public static void register(final String globalTxId, final String recoveryPolicy, final SagaPersistence sagaPersistence) {
-        TRANSACTION_MAP.putIfAbsent(globalTxId, new SagaTransaction(recoveryPolicy));
+        TRANSACTION_MAP.putIfAbsent(globalTxId, new SagaTransaction(globalTxId, recoveryPolicy));
         RESOURCE_MAP.put(globalTxId, new SagaTransactionResource(sagaPersistence));
     }
     
     public static SagaTransactionResource getCurrentTransactionResource() {
         return RESOURCE_MAP.get(SagaTransactionContextHolder.getGlobalTxId());
+    }
+    
+    public static SagaTransactionResource getCurrentTransactionResource(final String globalTxId) {
+        return RESOURCE_MAP.get(globalTxId);
     }
     
     public static SagaTransaction getCurrentSagaTransaction() {
